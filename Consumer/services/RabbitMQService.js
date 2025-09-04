@@ -71,8 +71,9 @@ class RabbitMQService {
           passcode: this.password,
           host: this.vhost
         },
-        debug: msg => console.log('STOMP: ' + msg),
-        reconnectDelay: 5000,
+        // Disable verbose debug logging
+        debug: function() {}, // Empty function to disable debug logs
+        reconnectDelay: 15000, // Increased reconnect delay to reduce connection attempts
         heartbeatIncoming: 10000,     // Increased heartbeat time
         heartbeatOutgoing: 10000,     // Increased heartbeat time
         maxWebSocketFrameSize: 16 * 1024,  // Increased frame size
@@ -121,15 +122,14 @@ class RabbitMQService {
   // Check if connected
   isConnected() {
     const connected = this.connected && this.client && this.client.connected;
-    console.log(`Connection status check: ${connected ? 'Connected' : 'Disconnected'}`);
+    // Removed excessive logging here
     return connected;
   }
   
   // Check connection and attempt reconnect if needed
   checkConnection() {
-    console.log('Checking connection status...');
     if (!this.isConnected()) {
-      console.log('Connection check failed, attempting to reconnect...');
+      // Reduced logging, only log when actually attempting to reconnect
       this.connect();
       return false;
     }
@@ -248,7 +248,7 @@ class RabbitMQService {
           console.log('Attempting to reconnect...');
           this.connect();
         }
-      }, 8000); // Increased reconnect delay
+      }, 20000); // Significantly increased reconnect delay to avoid connection storms
     }
   }
 
