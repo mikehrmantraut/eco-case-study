@@ -53,6 +53,10 @@ const MessageList = ({ messages, refreshing, onRefresh }) => {
       )}
       contentContainerStyle={styles.listContent}
       refreshControl={renderRefreshControl()}
+      showsVerticalScrollIndicator={true}
+      initialNumToRender={10}
+      maxToRenderPerBatch={10}
+      windowSize={10}
     />
   );
 };
@@ -60,12 +64,14 @@ const MessageList = ({ messages, refreshing, onRefresh }) => {
 const styles = StyleSheet.create({
   listContent: {
     paddingVertical: spacing.sm,
+    paddingBottom: spacing.xl * 2, // Add extra padding at the bottom
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.md,
+    paddingBottom: spacing.xl * 2, // Add extra padding at the bottom
     minHeight: '100%',
     backgroundColor: colors.background,
   },

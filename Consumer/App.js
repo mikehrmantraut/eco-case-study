@@ -1,35 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, SafeAreaView, StatusBar, Image } from 'react-native';
+import { StyleSheet, View, Text, SafeAreaView, StatusBar, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MessageList from './components/MessageList';
-import ConnectionStatus from './components/ConnectionStatus';
 import rabbitMQService from './services/RabbitMQService';
-import { colors, spacing, typography, borderRadius, shadows } from './theme';
+import { colors, spacing, typography, shadows } from './theme';
 
 export default function App() {
   const [messages, setMessages] = useState([]);
-  const [connected, setConnected] = useState(false);
-  const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [newMessageReceived, setNewMessageReceived] = useState(false);
 
   // Connect to RabbitMQ when component mounts
   useEffect(() => {
-    // Handle connection status changes
-    const unsubscribeConnection = rabbitMQService.onConnectionChange((isConnected) => {
-      setConnected(isConnected);
-      if (isConnected) {
-        setError(null);
-      }
-    });
-
-    // Handle incoming messages
+    // Handle incoming messages with auto-refresh
     const unsubscribeMessages = rabbitMQService.onMessage((message) => {
+      console.log("New message received, auto-refreshing list");
+      // Add the new message to the existing list
       setMessages((prevMessages) => [message, ...prevMessages]);
-    });
-
-    // Handle errors
-    const unsubscribeErrors = rabbitMQService.onError((err) => {
-      setError(err);
+      // Show new message notification
+      setNewMessageReceived(true);
+      // Hide notification after 3 seconds
+      setTimeout(() => {
+        setNewMessageReceived(false);
+      }, 3000);
     });
 
     // Connect to RabbitMQ
@@ -37,12 +30,19 @@ export default function App() {
 
     // Initial message fetch
     fetchMessages();
+    
+    // Periodic connection check (every 30 seconds)
+    const connectionCheckInterval = setInterval(() => {
+      console.log("Performing periodic connection check");
+      if (!rabbitMQService.isConnected()) {
+        rabbitMQService.checkConnection();
+      }
+    }, 30000);
 
     // Cleanup on unmount
     return () => {
-      unsubscribeConnection();
       unsubscribeMessages();
-      unsubscribeErrors();
+      clearInterval(connectionCheckInterval);
       rabbitMQService.disconnect();
     };
   }, []);
@@ -52,7 +52,7 @@ export default function App() {
     try {
       rabbitMQService.connect();
     } catch (err) {
-      setError(err);
+      console.log('Connection error:', err);
     }
   };
 
@@ -60,12 +60,15 @@ export default function App() {
   const fetchMessages = async () => {
     setRefreshing(true);
     try {
-      const fetchedMessages = await rabbitMQService.fetchMessages(20);
+      // Check connection before fetching messages
+      rabbitMQService.checkConnection();
+      
+      const fetchedMessages = await rabbitMQService.fetchMessages(100);
       if (fetchedMessages && fetchedMessages.length > 0) {
         setMessages(fetchedMessages);
       }
     } catch (err) {
-      setError(err);
+      console.log('Error fetching messages:', err);
     } finally {
       setRefreshing(false);
     }
@@ -76,11 +79,7 @@ export default function App() {
     fetchMessages();
   };
 
-  // Handle reconnect
-  const handleReconnect = () => {
-    setError(null);
-    connectToRabbitMQ();
-  };
+  // Auto reconnect is handled by the service
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -95,12 +94,11 @@ export default function App() {
             <Text style={styles.subtitle}>Message Consumer</Text>
           </View>
 
-          <ConnectionStatus connected={connected} error={error} />
-          
-          {!connected && (
-            <TouchableOpacity style={styles.reconnectButton} onPress={handleReconnect}>
-              <Text style={styles.reconnectText}>Reconnect</Text>
-            </TouchableOpacity>
+          {/* New message notification */}
+          {newMessageReceived && (
+            <View style={styles.notification}>
+              <Text style={styles.notificationText}>Yeni mesaj alındı!</Text>
+            </View>
           )}
 
           <MessageList 
@@ -108,6 +106,9 @@ export default function App() {
             refreshing={refreshing} 
             onRefresh={handleRefresh} 
           />
+          
+          {/* Bottom padding for iOS and Android */}
+          <View style={styles.bottomPadding} />
         </View>
       </SafeAreaView>
     </GestureHandlerRootView>
@@ -122,6 +123,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  bottomPadding: {
+    height: Platform.OS === 'ios' ? spacing.xl : spacing.xl * 2,
+    backgroundColor: 'transparent',
   },
   header: {
     backgroundColor: colors.secondary,
@@ -150,16 +155,15 @@ const styles = StyleSheet.create({
     color: colors.textLight,
     marginTop: spacing.xs,
   },
-  reconnectButton: {
-    backgroundColor: colors.primary,
+  notification: {
+    backgroundColor: colors.success,
     padding: spacing.sm,
-    margin: spacing.sm,
-    borderRadius: borderRadius.small,
     alignItems: 'center',
+    justifyContent: 'center',
     ...shadows.small,
   },
-  reconnectText: {
-    color: colors.textOnPrimary,
+  notificationText: {
+    color: 'white',
     fontWeight: 'bold',
     fontSize: typography.fontSize.medium,
   },

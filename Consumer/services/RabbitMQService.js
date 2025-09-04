@@ -73,8 +73,9 @@ class RabbitMQService {
         },
         debug: msg => console.log('STOMP: ' + msg),
         reconnectDelay: 5000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000,
+        heartbeatIncoming: 10000,     // Increased heartbeat time
+        heartbeatOutgoing: 10000,     // Increased heartbeat time
+        maxWebSocketFrameSize: 16 * 1024,  // Increased frame size
       });
 
       // Set up connection event handlers
@@ -119,7 +120,20 @@ class RabbitMQService {
 
   // Check if connected
   isConnected() {
-    return this.connected && this.client && this.client.connected;
+    const connected = this.connected && this.client && this.client.connected;
+    console.log(`Connection status check: ${connected ? 'Connected' : 'Disconnected'}`);
+    return connected;
+  }
+  
+  // Check connection and attempt reconnect if needed
+  checkConnection() {
+    console.log('Checking connection status...');
+    if (!this.isConnected()) {
+      console.log('Connection check failed, attempting to reconnect...');
+      this.connect();
+      return false;
+    }
+    return true;
   }
 
   // Fetch messages directly via Management API
@@ -185,14 +199,19 @@ class RabbitMQService {
         try {
           console.log('Received message:', message.body);
           const messageData = JSON.parse(message.body);
+          
+          // Process the message immediately - this will trigger auto-refresh
           this._notifyMessageReceived(messageData);
         } catch (error) {
           console.log('Failed to parse message:', error);
           this._notifyError(new Error('Failed to parse message: ' + error.message));
         }
+      }, {
+        // Add auto-acknowledgment to ensure messages are processed
+        ack: 'auto'
       });
       
-      console.log('Subscription created:', this.subscription);
+      console.log('Subscription created with auto-refresh:', this.subscription);
       this.connected = true;
       this._notifyConnectionChange(true);
     } catch (error) {
@@ -214,8 +233,12 @@ class RabbitMQService {
   // Private: Handle disconnection
   _handleDisconnect() {
     console.log('WebSocket disconnected');
-    this.connected = false;
-    this._notifyConnectionChange(false);
+    
+    // Only notify if we were previously connected
+    if (this.connected) {
+      this.connected = false;
+      this._notifyConnectionChange(false);
+    }
     
     // Try to reconnect after a delay
     if (!this.reconnectTimer) {
@@ -225,15 +248,17 @@ class RabbitMQService {
           console.log('Attempting to reconnect...');
           this.connect();
         }
-      }, 5000);
+      }, 8000); // Increased reconnect delay
     }
   }
 
   // Private: Notify all message handlers
   _notifyMessageReceived(message) {
-    console.log('Notifying message handlers about:', message);
+    console.log('Notifying message handlers about new message:', message);
+    // Process the message immediately
     this.messageHandlers.forEach(handler => {
       try {
+        // Call the handler with the new message
         handler(message);
       } catch (error) {
         console.error('Error in message handler:', error);
